@@ -1,5 +1,5 @@
 #!/bin/bash
-#$ -q aparna
+#$ -q eecs221
 #$ -pe mpi 16
 #$ -N pingpong
 #$ -R y
@@ -9,7 +9,7 @@ hostname
 echo -e "\n\n"
 
 # Module load OpenMPI
-module load openmpi-1.8.3/gcc-4.8.3
+module load openmpi-1.8.3/gcc-4.9.2
 
 # Run the ping-pong benchmark
 mpirun -np 2 -npernode 1 ./pingpong
