@@ -1,100 +1,135 @@
+/* susie*/
+
 #include <iostream>
 #include <cstdlib>
-#include <mpi.h>
+
 #include "render.hh"
 
-using namespace std;
 
-#define WIDTH 1000
-#define HEIGHT 1000
+#include <mpi.h>
 
-int
-mandelbrot(double x, double y) {
-  int maxit = 511;
-  double cx = x;
-  double cy = y;
-  double newx, newy;
-
-  int it = 0;
-  for (it = 0; it < maxit && (x*x + y*y) < 4; ++it) {
-    newx = x*x - y*y + cx;
-    newy = 2*x*y + cy;
-    x = newx;
-    y = newy;
-  }
-  return it;
+//mandelbrot function
+//return iterations
+int mandelbrot(double x, double y) {
+    int maxit = 511;
+    double cx = x;
+    double cy = y;
+    double newx, newy;
+    
+    
+    int it = 0;
+    for (it = 0; it < maxit && (x*x + y*y) < 4; ++it) {
+        newx = x*x - y*y + cx;
+        newy = 2*x*y + cy;
+        x = newx;
+        y = newy;
+    }
+    return it;
 }
 
+//create 2-D array using malloc
+//return pointer of array
+int** arrayGenerater(int rows, int columns) {
+    int *metadata = (int *)malloc(rows*columns*sizeof(int));
+    int **array= (int **)malloc(rows*sizeof(int*));
+    for (int i=0; i<rows; i++)
+        array[i] = &(metadata[columns*i]);
+    return array;
+}
+
+
 int
-main (int argc, char* argv[])
-{
+main(int argc, char* argv[]) {
+    
+    //height and width
+    int height, width;
+    //rank and # processors
+    int rank, np;
 
-  int height = 1000;
-  int width = 1000;
+    //input size
+    if (argc == 3) {
+        height = atoi (argv[1]);
+        width = atoi (argv[2]);
+        assert (height > 0 && width > 0);
+    } else {
+        fprintf (stderr, "usage: %s <height> <width>\n", argv[0]);
+        fprintf (stderr, "where <height> and <width> are the dimensions of the image.\n");
+        return -1;
+    }
+    
+    //boundary
+    double xmin = -2.1;
+    double xmax = 0.7;
+    double ymin = -1.25;
+    double ymax = 1.25;
+    double it = (ymax - ymin)/height;
+    double jt = (xmax - xmin)/width;
+    double x, y;
 
-  int np,rank;
-  int i,j,k=0;
-  int N;
+    //init pointer to 2d array;
 
- double minX = -2.1; 
-  double maxX = 0.7; 
-  double minY = -1.25; 
-  double maxY = 1.25; 
-  double it = (maxY - minY)/height; 
-  double jt = (maxX - minX)/width; 
-  double x,y;
-  int* buff;
-  int* col; 
+    int **result;
+    int **temp;
 
-  MPI_Init(&argc, &argv);
-  MPI_Comm_size(MPI_COMM_WORLD,&np);
-  MPI_Comm_rank(MPI_COMM_WORLD,&rank);
- // printf("np is %d\n",np);
- // printf("rank is %d\n",rank);
-  if(rank == 0)
-  {
-    total_buff = (int*)std::malloc(height*width*sizeof(int));  
-     buff = (int*)std::malloc(height*(height/np)*sizeof(int));  
-     col = (int*)std::malloc(height*sizeof(int));
-     if(!buff || !col){fprintf(stderr,"Malloc failed\n");exit(1);}
-  } 
-  gil::rgb8_image_t img(height, width);
-  auto img_view = gil::view(img);
-  MPI_Barrier(MPI_COMM_WORLD);
+    //MPI init
+    MPI_Init (&argc, &argv);
+    MPI_Comm_size (MPI_COMM_WORLD, &np);
+    MPI_Comm_rank (MPI_COMM_WORLD, &rank);
 
-  k = 0;
-  
-  for(y=minY,i=rank;i< height;i+=np,y+=it)
-  {
-    for(x = minX,j=0;j<width;++j)
+    //create arrays
+    result = arrayGenerater(width, height);
+    temp = arrayGenerater(width, height);
+    
+    //open file for write
+    gil::rgb8_image_t img(height, width);
+    auto img_view = gil::view(img);
+    
+    //get the # blocks, assume height % np == 0
+
+    //init position of y
+    y = rank * it + ymin;
+    int i = 0;
+    while (i < height/np)
     {
-      col[k++] = mandelbrot(x,y);
-      x += jt;
+        //inti position of x
+        x = xmin;
+        int j = 0;
+        while (j < width) {
+            //get the iteration times
+            temp[i][j] = mandelbrot(x, y);
+            printf("rank is %d,data at %d %d is %d\n ",rank,i,j,temp[i][j]);
+            x += jt;
+            j++;
+        }
+        y += np*it;
+        i++;
     }
-    MPI_Gather(col,width,MPI_INT,buff,width,MPI_INT,0,MPI_COMM_WORLD);
-  }
-  MPI_Gather(buff,width*(height/np),MPI_INT,total_buff,width*(height/np),MPI_INT,0,MPI_COMM_WORLD);
-
-
-  MPI_Barrier(MPI_COMM_WORLD);
- // printf("to write\n");
-  if (rank == 0)
-  {
-    k = 0;
-
-    for (i = 0; i < height,k<height*width; ++i) {
-      for (j = 0; j < width,k<height*width; ++j) {
-        img_view(j, i) = render(total_buff[k++]/512.0);
-      }
+    //MPI gather
+    MPI_Gather(&(temp[0][0]), height/np* width, MPI_INT, &(result[0][0]), height/np * width, MPI_INT, 0, MPI_COMM_WORLD);
+    
+    //sync
+    MPI_Barrier(MPI_COMM_WORLD);
+    //write data  
+    if (rank == 0) {
+	int counter = 0;
+        for (int i = 0; i < height/np; ++i) {
+	  for (int k = 0; k < height; k+=height/np) {
+            for (int j = 0; j < width; ++j) {
+                img_view(j, counter) = render(result[i+k][j]/512.0);
+                printf("img at %d %d,resultdata at %d %d is %d\n ",counter,j,i,j,result[i+k][j]);
+            }
+		counter++;
+          }
+	}
     }
-    gil::png_write_view("mandelbrot_susie.png", const_view(img));
-  }
-
-  MPI_Barrier(MPI_COMM_WORLD);
-
-  free(buff);
-  free(col);
-  MPI_Finalize();
-  return 0;
-
+    //sync
+   MPI_Barrier(MPI_COMM_WORLD); 
+    free(temp);
+    free(result);
+    if(rank==0)
+    {
+        gil::png_write_view("mandelbrot_susie.png", const_view(img));
+    }
+    MPI_Finalize();
+    return 0;
 }
