@@ -1,104 +1,181 @@
-/**
- *  \file mandelbrot_ms.cc
- *
- *  \brief Implement your parallel mandelbrot set in this file.
- */
+/* master-slave*/
 
 #include <iostream>
 #include <cstdlib>
- #include <mpi.h>
 
-#include "render.h"
-#define WIDTH 1000
-#define HEIGHT 1000
+#include "render.hh"
 
+using namespace std;
+#include <mpi.h>
 
-//function from professor
-int
-mandelbrot(double x, double y) {
-  int maxit = 511;
-  double cx = x;
-  double cy = y;
-  double newx, newy;
+//mandelbrot function
+//return iterations
+int mandelbrot(double x, double y) {
+    int maxit = 511;
+    double cx = x;
+    double cy = y;
+    double newx, newy;
+    
+    
+    int it = 0;
+    for (it = 0; it < maxit && (x*x + y*y) < 4; ++it) {
+        newx = x*x - y*y + cx;
+        newy = 2*x*y + cy;
+        x = newx;
+        y = newy;
+    }
+    return it;
+}
 
-  int it = 0;
-  for (it = 0; it < maxit && (x*x + y*y) < 4; ++it) {
-    newx = x*x - y*y + cx;
-    newy = 2*x*y + cy;
-    x = newx;
-    y = newy;
-  }
-  return it;
+//create 2-D array using malloc
+//return pointer of array
+int** arrayGenerater(int rows, int columns) {
+    int *metadata = (int *)malloc(rows*columns*sizeof(int));
+    int **array= (int **)malloc(rows*sizeof(int*));
+    for (int i=0; i<rows; i++)
+        array[i] = &(metadata[columns*i]);
+    return array;
 }
 
 
 int
-main (int argc, char* argv[])
-{
-  /* Lucky you, you get to write MPI code */
-  double minX = -2.1;
-  double maxX = 0.7;
-  double minY = -1.25;
-  double maxY = 1.25;
-  
-  int height, width;
-  if (argc == 3) {
-    height = atoi (argv[1]);
-    width = atoi (argv[2]);
-    assert (height > 0 && width > 0);
-  } else {
-    fprintf (stderr, "usage: %s <height> <width>\n", argv[0]);
-    fprintf (stderr, "where <height> and <width> are the dimensions of the image.\n");
-    return -1;
-  }
+main(int argc, char* argv[]) {
+    
+    //height and width
+    int height, width;
+    //rank and # processors
+    int rank, np;
+    //for tag the ms process
+    int row;
+    int source,tag;
+    //define end = -1 as the finish sign.
+    int end = -1;
 
-  double it = (maxY - minY)/height;
-  double jt = (maxX - minX)/width;
-  double x, y;
+    //input size
+    if (argc == 3) {
+        height = atoi (argv[1]);
+        width = atoi (argv[2]);
+        assert (height > 0 && width > 0);
+    } else {
+        fprintf (stderr, "usage: %s <height> <width>\n", argv[0]);
+        fprintf (stderr, "where <height> and <width> are the dimensions of the image.\n");
+        return -1;
+    }
+    
+    //boundary
+    double xmin = -2.1;
+    double xmax = 0.7;
+    double ymin = -1.25;
+    double ymax = 1.25;
+    double it = (ymax - ymin)/height;
+    double jt = (xmax - xmin)/width;
+    double x, y;
 
-  int i,j;
-  int rows,cols;
-  int rank,np;
-  int end;
+    //init pointer to 2d array;
+    int **result;
+    //init status
+    MPI_Status status;
+    //MPI init
+    MPI_Init (&argc, &argv);
+    MPI_Comm_size (MPI_COMM_WORLD, &np);
+    MPI_Comm_rank (MPI_COMM_WORLD, &rank);
 
-  int row[WIDTH];
-  MPI_Init(NULL,NULL);
-  MPI_Comm_size(MPI_COMM_WORLD,&np);
-  MPI_Comm_rank(MPI_COMM_WORLD,&rank);
-
-
-  MPI_Status status;
-
-  if (rank == 0)
-  {
-  	i = 0;
-  	while(i < np-1)
-  	{
-  		MPI_Send(&i,1,MPI_INT,i+1,0,MPI_COMM_WORLD);
-  		i++;
-  	}
-
-  	while()
-  	
+    //create arrays
+    result = arrayGenerater(width, height);
+    int line[width];
+    printf("line is at %p",line);
+    
+    //open file for write
+    gil::rgb8_image_t img(height, width);
+    auto img_view = gil::view(img);
+    
 
 
-  }
-
-  else
-  {
-  		while(1)
-  		{
-  			MPI_Recv(&i,1,MPI_INT,0,0,MPI_COMM_WORLD,&status);
-  			MPI_Send(temp,width,MPI_INT,0,i,MPI_COMM_WORLD);
-  		}
-  }
-  if(rank == 0)
-  {
-  	gil::png_write_view("mandelbrot.png", const_view(img));
+printf("start\n");
+    //start
+    if(rank==0)
+    {
+        //master
+        //bcast
+        for(row=0;row<np-1;row++)
+        {    MPI_Send(&row,1,MPI_INT,row+1,0,MPI_COMM_WORLD);
+	     printf("send %d to %d th slave\n",row,row+1);
 	}
-  MPI_Finalize();
-}
+        printf("init sending success\n");
+        //receive and send
+        for (row=np-1;row<height;row++){
+            MPI_Recv(line,width,MPI_INT,MPI_ANY_SOURCE,MPI_ANY_TAG,MPI_COMM_WORLD,&status);
+	    tag=status.MPI_TAG;
+            source=status.MPI_SOURCE;
+printf("root receive from %d with %d the rows finished\n",source,tag);
 
-}
+            for (int i = 0; i < width; ++i)
+            {
+                result[tag][i] = line[i];
+//printf("result at %d %d is %d",tag,i,line[i]);
+            }	    
+            printf("receive success\n");	
+            MPI_Send(&row,1,MPI_INT,source,0,MPI_COMM_WORLD);
+            printf("root sending to %d\n",source);
+        }
 
-/* eof */
+        //stop slave from receiving
+        for(row=0;row<np-1;row++){
+           MPI_Recv(line,width,MPI_INT,MPI_ANY_SOURCE,MPI_ANY_TAG,MPI_COMM_WORLD,&status);
+            tag=status.MPI_TAG;
+            source=status.MPI_SOURCE;
+              
+            for (int i = 0; i < width; ++i)
+            {
+                result[tag][i] = line[i];
+            }
+
+           MPI_Send(&end,1,MPI_INT,source,0,MPI_COMM_WORLD);
+        }
+    }    
+    else 
+    {
+        //slave
+    while(1){
+        MPI_Recv(&row,1,MPI_INT,0,0,MPI_COMM_WORLD,&status);
+	printf("%d slave receive from root",row);
+        //nothings to do
+        if (row==-1) break;
+	
+        x = xmin;
+        y = ymin + row * it;
+        //calculate
+        for(int j=0;j<width;j++){
+            line[j]=mandelbrot(x,y);
+            x += jt;
+        }
+printf("finish cal\n");
+        MPI_Send(line,width,MPI_INT,0,row,MPI_COMM_WORLD);
+	printf("sending to root with row equals %d\n",row);
+        }
+    }
+
+    MPI_Barrier(MPI_COMM_WORLD);
+    //calculate the final value
+    if(rank == 0)
+    {
+        for(int i =0;i<height;i++)
+        {
+            for (int j = 0; i < width; ++j)
+            {
+                img_view(j,i) = render(result[i][j]/512.0);
+            }
+        }
+    }
+    
+    MPI_Barrier(MPI_COMM_WORLD);
+    free(line);
+    free(result);
+    if(rank==0)
+    {
+        gil::png_write_view("mandelbrot_ms.png", const_view(img));
+    }
+    MPI_Finalize();
+
+    return 0;
+}
