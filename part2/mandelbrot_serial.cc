@@ -8,7 +8,8 @@
 #include <cstdlib>
 
 #include "render.hh"
-
+#include "timer.c"
+#include "timer.h"
 using namespace std;
 
 #define WIDTH 1000
@@ -48,12 +49,14 @@ main(int argc, char* argv[]) {
     fprintf (stderr, "where <height> and <width> are the dimensions of the image.\n");
     return -1;
   }
-
+ stopwatch_init (); 
+  struct stopwatch_t* timer = stopwatch_create (); assert (timer);
+  stopwatch_start (timer);
   double it = (maxY - minY)/height;
   double jt = (maxX - minX)/width;
   double x, y;
 
-
+  int buff[height][width];
   gil::rgb8_image_t img(height, width);
   auto img_view = gil::view(img);
 
@@ -61,12 +64,17 @@ main(int argc, char* argv[]) {
   for (int i = 0; i < height; ++i) {
     x = minX;
     for (int j = 0; j < width; ++j) {
-      img_view(j, i) = render(mandelbrot(x, y)/512.0);
+      buff[i][j] = mandelbrot(x,y);
+      img_view(j, i) = render(buff[i][j]/512.0);
+     // img_view(j,i) = render(mandelbrot(x,y)/512.0);
       x += jt;
     }
     y += it;
   }
-  gil::png_write_view("mandelbrot.png", const_view(img));
+  gil::png_write_view("mandelbrot_1.png", const_view(img));
+  long double t_qs = stopwatch_stop (timer);
+  printf ("Sequential one is %Lg seconds.\n", t_qs);
+  stopwatch_destroy(timer);
 }
 
 /* eof */
