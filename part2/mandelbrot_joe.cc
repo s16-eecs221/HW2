@@ -4,7 +4,8 @@
 #include <cstdlib>
 
 #include "render.hh"
-
+#include "timer.c"
+#include "timer.h"
 
 #include <mpi.h>
 
@@ -57,7 +58,10 @@ main(int argc, char* argv[]) {
         return -1;
     }
     
-    //boundary
+ stopwatch_init ();
+  struct stopwatch_t* timer = stopwatch_create (); assert (timer);
+  stopwatch_start (timer);
+   //boundary
     double xmin = -2.1;
     double xmax = 0.7;
     double ymin = -1.25;
@@ -123,8 +127,11 @@ main(int argc, char* argv[]) {
     free(result);
     if(rank==0)
     {
-        gil::png_write_view("mandelbrot_joe_1.png", const_view(img));
-    }
+        gil::png_write_view("mandelbrot_joe.png", const_view(img));
+        long double t_qs = stopwatch_stop (timer);
+  	printf("Joe's time is %Lg seconds",t_qs);
+ 	stopwatch_destroy (timer);        
+   }
     MPI_Finalize();
     return 0;
 }
