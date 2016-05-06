@@ -4,7 +4,8 @@
 #include <cstdlib>
 
 #include "render.hh"
-
+#include "timer.c"
+#include "timer.h"
 using namespace std;
 #include <mpi.h>
 
@@ -61,7 +62,9 @@ main(int argc, char* argv[]) {
         fprintf (stderr, "where <height> and <width> are the dimensions of the image.\n");
         return -1;
     }
-    
+    stopwatch_init ();
+  struct stopwatch_t* timer = stopwatch_create (); assert (timer);
+stopwatch_start (timer); 
     //boundary
     double xmin = -2.1;
     double xmax = 0.7;
@@ -177,7 +180,10 @@ break;}
     if(rank==0)
     {
         gil::png_write_view("mandelbrot_ms.png", const_view(img));
-    }
+  long double t_qs = stopwatch_stop (timer);
+  printf ("master-slave time is  %Lg seconds.\n",t_qs);
+stopwatch_destroy (timer);  
+}
     MPI_Barrier(MPI_COMM_WORLD);
     MPI_Finalize();
 

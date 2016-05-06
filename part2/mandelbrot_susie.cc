@@ -5,7 +5,8 @@
 
 #include "render.hh"
 
-
+#include "timer.c"
+#include "time.h"
 #include <mpi.h>
 
 //mandelbrot function
@@ -56,8 +57,10 @@ main(int argc, char* argv[]) {
         fprintf (stderr, "where <height> and <width> are the dimensions of the image.\n");
         return -1;
     }
-    
-    //boundary
+   stopwatch_init ();
+  struct stopwatch_t* timer = stopwatch_create (); assert (timer); 
+ stopwatch_start (timer);   
+//boundary
     double xmin = -2.1;
     double xmax = 0.7;
     double ymin = -1.25;
@@ -97,7 +100,7 @@ main(int argc, char* argv[]) {
         while (j < width) {
             //get the iteration times
             temp[i][j] = mandelbrot(x, y);
-            printf("rank is %d,data at %d %d is %d\n ",rank,i,j,temp[i][j]);
+           // printf("rank is %d,data at %d %d is %d\n ",rank,i,j,temp[i][j]);
             x += jt;
             j++;
         }
@@ -116,7 +119,7 @@ main(int argc, char* argv[]) {
 	  for (int k = 0; k < height; k+=height/np) {
             for (int j = 0; j < width; ++j) {
                 img_view(j, counter) = render(result[i+k][j]/512.0);
-                printf("img at %d %d,resultdata at %d %d is %d\n ",counter,j,i,j,result[i+k][j]);
+               // printf("img at %d %d,resultdata at %d %d is %d\n ",counter,j,i,j,result[i+k][j]);
             }
 		counter++;
           }
@@ -129,6 +132,8 @@ main(int argc, char* argv[]) {
     if(rank==0)
     {
         gil::png_write_view("mandelbrot_susie.png", const_view(img));
+    long double t_seq = stopwatch_stop (timer); 
+   printf("susie's time is %Lg seconds",t_seq);
     }
     MPI_Finalize();
     return 0;
