@@ -83,7 +83,7 @@ main(int argc, char* argv[]) {
     //create arrays
     result = arrayGenerater(width, height);
     int line[width];
-    printf("line is at %p",line);
+  //  printf("line is at %p",line);
     
     //open file for write
     gil::rgb8_image_t img(height, width);
@@ -91,7 +91,7 @@ main(int argc, char* argv[]) {
     
 
 
-printf("start\n");
+//printf("start\n");
     //start
     if(rank==0)
     {
@@ -99,24 +99,24 @@ printf("start\n");
         //bcast
         for(row=0;row<np-1;row++)
         {    MPI_Send(&row,1,MPI_INT,row+1,0,MPI_COMM_WORLD);
-	     printf("send %d to %d th slave\n",row,row+1);
+	 //    printf("send %d to %d th slave\n",row,row+1);
 	}
-        printf("init sending success\n");
+       // printf("init sending success\n");
         //receive and send
         for (row=np-1;row<height;row++){
             MPI_Recv(line,width,MPI_INT,MPI_ANY_SOURCE,MPI_ANY_TAG,MPI_COMM_WORLD,&status);
 	    tag=status.MPI_TAG;
             source=status.MPI_SOURCE;
-printf("root receive from %d with %d the rows finished\n",source,tag);
+           // printf("root receive from %d with %d the rows finished\n",source,tag);
 
             for (int i = 0; i < width; ++i)
             {
                 result[tag][i] = line[i];
-//printf("result at %d %d is %d",tag,i,line[i]);
+		//printf("result at %d %d is %d",tag,i,line[i]);
             }	    
-            printf("receive success\n");	
+           // printf("receive success\n");	
             MPI_Send(&row,1,MPI_INT,source,0,MPI_COMM_WORLD);
-            printf("root sending to %d\n",source);
+         //   printf("root sending to %d\n",source);
         }
 
         //stop slave from receiving
@@ -124,12 +124,12 @@ printf("root receive from %d with %d the rows finished\n",source,tag);
            MPI_Recv(line,width,MPI_INT,MPI_ANY_SOURCE,MPI_ANY_TAG,MPI_COMM_WORLD,&status);
             tag=status.MPI_TAG;
             source=status.MPI_SOURCE;
-              
+           // printf("receive last gourp of slaves with job %d",tag);    
             for (int i = 0; i < width; ++i)
             {
                 result[tag][i] = line[i];
             }
-
+//printf("sending end signal to slave");
            MPI_Send(&end,1,MPI_INT,source,0,MPI_COMM_WORLD);
         }
     }    
@@ -138,9 +138,11 @@ printf("root receive from %d with %d the rows finished\n",source,tag);
         //slave
     while(1){
         MPI_Recv(&row,1,MPI_INT,0,0,MPI_COMM_WORLD,&status);
-	printf("%d slave receive from root",row);
+	//printf("%d slave receive from root",row);
         //nothings to do
-        if (row==-1) break;
+        if (row==-1) 
+{//printf("all finished!\n");
+break;}
 	
         x = xmin;
         y = ymin + row * it;
@@ -149,32 +151,34 @@ printf("root receive from %d with %d the rows finished\n",source,tag);
             line[j]=mandelbrot(x,y);
             x += jt;
         }
-printf("finish cal\n");
+//printf("finish cal\n");
         MPI_Send(line,width,MPI_INT,0,row,MPI_COMM_WORLD);
-	printf("sending to root with row equals %d\n",row);
+	//printf("sending to root with row equals %d\n",row);
         }
     }
 
     MPI_Barrier(MPI_COMM_WORLD);
-    //calculate the final value
+    //calculate the final valuei
+   // printf("final calculate");
     if(rank == 0)
     {
         for(int i =0;i<height;i++)
         {
-            for (int j = 0; i < width; ++j)
+            for (int j = 0; j < width; ++j)
             {
                 img_view(j,i) = render(result[i][j]/512.0);
+		//printf("result at %d %d equals to %d\n",i,j,result[i][j]);
             }
         }
     }
-    
+    //printf("finish match!\n");
     MPI_Barrier(MPI_COMM_WORLD);
-    free(line);
     free(result);
     if(rank==0)
     {
         gil::png_write_view("mandelbrot_ms.png", const_view(img));
     }
+    MPI_Barrier(MPI_COMM_WORLD);
     MPI_Finalize();
 
     return 0;
